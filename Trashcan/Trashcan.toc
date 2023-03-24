@@ -2,7 +2,7 @@
 ## Title: Trashcan
 ## Version: 0.1
 ## Notes: Atuomatically DELETE junk. (No, you really don't need it!!)
-## Author: Peachtree YellowJacket
+## Author: Peachtree YellowJacket , Netherborne
 ## eMail:
 ## URL:
 ## SavedVariables: Config
