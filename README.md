@@ -22,6 +22,10 @@ Trashcan Commands:
 
 `/tc remove itemID` : Removes the itemID specified from the list of unwanted items.
 
+`/tc keep itemID` : Adds the itemID specified to the list of wanted items.
+
+`/tc unkeep itemID` : Removes the itemID specified from the list of wanted items.
+
 `/tc dump` : Displays the list of manually added itemIDs.
 
 
