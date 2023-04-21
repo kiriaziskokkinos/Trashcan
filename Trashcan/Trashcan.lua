@@ -5,21 +5,32 @@
 -- Desc: 	Added slashcmd to toggle Trashcan feature
 -- Usage:  	/tc <on> <off> <status> <count> <list> <purge>
 -- ==============================================================
-MyAddon = { }
+MyAddon = {}
 local frame = CreateFrame("Frame")
 -- trigger event with /reloadui or /rl
 
 frame:SetScript("OnEvent", function(this, event, ...)
-    MyAddon[event](MyAddon, ...)
+	MyAddon[event](MyAddon, ...)
 end)
 
 
+local function shouldDelete(itemLink)
+	if (itemLink) then
+		_, _, quality = GetItemInfo(itemLink)
+		local itemID = GetItemInfoFromHyperlink(itemLink)
 
-
-
-
-
-
+		if Config["WantedItemList"][tostring(itemID)] then
+			return false
+		end
+		if Config["UnwantedItemList"][tostring(itemID)] then
+			return true
+		end
+		if quality == 0 and Config["trash"] then
+			return true
+		end
+	end
+	return false
+end
 
 
 -- Functions
@@ -32,21 +43,29 @@ end
 function Trashcan_OnEvent()
 	if (event == "ADDON_LOADED" and arg1 == "Trashcan") then
 		if not Config then
-			Config = {}
+			Config = {
+				UnwantedItemList = {},
+				WantedItemList = {},
+				status = true,
+				trash = true,
+				autoreport = true,
+			}
 			print("Trashcan Initialized")
 		end
-
+		
+		-- INITIALIZE SAVED_VARIABLES
+		if not Config["UnwantedItemList"] then
+			Config["UnwantedItemList"] = {}
+		end
+		if not Config["WantedItemList"] then
+			Config["WantedItemList"] = {}
+		end
 		if type(Config["status"]) ~= "boolean" then
-
 			Config["status"] = true
 		end
 		if type(Config["trash"]) ~= "boolean" then
 			Config["trash"] = true
 		end
-		if not Config["UnwantedItemList"] then
-			Config["UnwantedItemList"] = {}
-		end
-
 		if type(Config["autoreport"]) ~= "boolean" then
 			Config["autoreport"] = true
 		end
@@ -56,27 +75,23 @@ function Trashcan_OnEvent()
 		local check = next(Config["UnwantedItemList"])
 		if Config["UnwantedItemList"][check] and type(Config["UnwantedItemList"][check]) == "boolean" then
 			print("Old SaveVariable format detected, converting...")
-			for i in pairs(Config["UnwantedItemList"]) do 
-	
+			for i in pairs(Config["UnwantedItemList"]) do
 				local item = Item:CreateFromID(i)
 				item:ContinueOnLoad(
-					function() 
-						SlashCmdList.TC("remove "..i)
-						SlashCmdList.TC("add "..i) 
+					function()
+						SlashCmdList.TC("remove " .. i)
+						SlashCmdList.TC("add " .. i)
 					end
 				)
 			end
 		end
-
-
-
-	elseif (event == "LOOT_CLOSED" or ( event == "UNIT_INVENTORY_CHANGED" and arg1 == "player")) then
+	elseif (event == "LOOT_CLOSED" or (event == "UNIT_INVENTORY_CHANGED" and arg1 == "player")) then
 		TrashcanMainFrame:Show()
 	end
 end
 
 function Trashcan_OnUpdate(self, elapsed)
-self.TimeSinceLastUpdate = self.TimeSinceLastUpdate + elapsed;
+	self.TimeSinceLastUpdate = self.TimeSinceLastUpdate + elapsed;
 	while (self.TimeSinceLastUpdate > 1.5) do
 		DestroyJunk()
 		self.TimeSinceLastUpdate = self.TimeSinceLastUpdate - 1.5;
@@ -84,16 +99,17 @@ self.TimeSinceLastUpdate = self.TimeSinceLastUpdate + elapsed;
 end
 
 function tc_Init()
-  -- Add Slash Commands
+	-- Add Slash Commands
 	-- print("Trashcan Slash cmd Loaded!")
-  SlashCmdList["TC"] = tc_toggle;
-  SLASH_TC1 = "/tc";
+	SlashCmdList["TC"] = tc_toggle;
+	SLASH_TC1 = "/tc";
 end
 
 function tc_toggle(msg)
 	local _, _, cmd, args = string.find(msg, "%s?(%w+)%s?(.*)")
-	if (not cmd) then 
-		print("Trashcan Commands:\n",
+	if (not cmd) then
+		print(
+			"Trashcan Commands:\n",
 			"/tc on/off : Enabled or disables Trashcan\n",
 			"/tc trash on/off : Enabled or disables auto deletion of trash items.\n",
 			"/tc status : Shows if trashcan is enabled or disabled.\n",
@@ -102,9 +118,10 @@ function tc_toggle(msg)
 			"/tc purge : Deletes all unwanted items in your inventory.\n",
 			"/tc add itemID : Adds the itemID specified to the list of unwanted items.\n",
 			"/tc remove itemID : Removes the itemID specified from the list of unwanted items.\n",
+			"/tc keep itemID : Adds the itemID specified to the list of wanted items.\n",
+			"/tc unkeep itemID : Removes the itemID specified from the list of wanted items.\n",
 			"/tc dump : Displays the list of manually added itemIDs.\n",
 			"/tc autoreport on/off : Toggle the report of automatic deletion."
-
 		)
 	elseif (cmd == "off") then
 		Config["status"] = false
@@ -113,7 +130,6 @@ function tc_toggle(msg)
 		Config["status"] = true
 		print("Trashcan:  ENABLED!")
 	elseif (cmd == "status") then
-
 		print("---- Trashcan status report ----")
 
 		if (Config["status"]) then
@@ -121,7 +137,7 @@ function tc_toggle(msg)
 		else
 			print("Trashcan is currently DISABLED.")
 		end
-	
+
 		if (Config["trash"]) then
 			print("Trashcan will delete trash items.")
 		else
@@ -134,44 +150,30 @@ function tc_toggle(msg)
 			print("Trashcan will *NOT* report automatic deletion.")
 		end
 
-
-
 		print("--------------------------------")
-
-
 	elseif (cmd == "count") then
 		--start searching bags for gray level item(s) to count
-		local bag, slot, link, quality
+		local link
 		local listCount = 0
-		for bag = 0,4 do
-			for slot = 1,GetContainerNumSlots(bag) do
+		for bag = 0, 4 do
+			for slot = 1, GetContainerNumSlots(bag) do
 				link = GetContainerItemLink(bag, slot)
-				if (link) then
-					_, _, quality = GetItemInfo(link)
-					local itemID = GetItemInfoFromHyperlink(link)
-					if (quality == 0 and Config["trash"]) or Config["UnwantedItemList"][tostring(itemID)] then
-						listCount = listCount + 1
-						--PickupContainerItem(bag, slot)
-						--DeleteCursorItem()
-					end
+				if shouldDelete(link) then
+					listCount = listCount + 1
 				end
 			end
 		end
-		print("Total Items: "..tostring(listCount));
+		print("Total Items: " .. tostring(listCount));
 	elseif (cmd == "list") then
 		local totalItems = 0
 		--start searching bags for gray level item(s) to list
-		local bag, slot, link, quality
-		for bag = 0,4 do
-			for slot = 1,GetContainerNumSlots(bag) do
+		local link
+		for bag = 0, 4 do
+			for slot = 1, GetContainerNumSlots(bag) do
 				link = GetContainerItemLink(bag, slot)
-				if (link) then
-					_, _, quality = GetItemInfo(link)
-					local itemID = GetItemInfoFromHyperlink(link)
-					if (quality == 0 and Config["trash"])  or Config["UnwantedItemList"][tostring(itemID)] then
+				if shouldDelete(link) then
 					totalItems = totalItems + 1
-					DEFAULT_CHAT_FRAME:AddMessage("Item found:"..link,1,0,0)
-					end
+					DEFAULT_CHAT_FRAME:AddMessage("Item found:" .. link, 1, 0, 0)
 				end
 			end
 		end
@@ -180,89 +182,99 @@ function tc_toggle(msg)
 		end
 	elseif (cmd == "purge") then
 		local iCounter = 0
-		local bag, slot, link, quality
-		for bag = 0,4 do
-			for slot = 1,GetContainerNumSlots(bag) do
-			link = GetContainerItemLink(bag, slot)
-				if (link) then
-					_, _, quality = GetItemInfo(link)
-					local itemID = GetItemInfoFromHyperlink(link)
-					if (quality == 0 and Config["trash"]) or Config["UnwantedItemList"][tostring(itemID)] then
-						iCounter = iCounter + 1
-						DEFAULT_CHAT_FRAME:AddMessage("Destroyed: "..link,1,0,0)
-						PickupContainerItem(bag, slot)
-						DeleteCursorItem()
-					end
+		local link
+		for bag = 0, 4 do
+			for slot = 1, GetContainerNumSlots(bag) do
+				link = GetContainerItemLink(bag, slot)
+				if shouldDelete(link) then
+					iCounter = iCounter + 1
+					DEFAULT_CHAT_FRAME:AddMessage("Destroyed: " .. link, 1, 0, 0)
+					PickupContainerItem(bag, slot)
+					DeleteCursorItem()
 				end
 			end
-		end			
+		end
 		if (iCounter == 0) then
 			print("No items to purge.")
-		end	
+		end
 	elseif (cmd == "add") and args ~= "" then
-		if Config["UnwantedItemList"][args] then 
+		if Config["UnwantedItemList"][args] then
 			print("Item is already in the list.")
 		else
-			local  link =  select (2,GetItemInfo(args))
-			if link then 
+			local link = select(2, GetItemInfo(args))
+			if link then
 				Config["UnwantedItemList"][args] = link
-				print(args.." added to the list.")
+				print(args .. " added to the list.")
 			else
 				print("Invalid item")
 			end
 		end
 	elseif (cmd == "remove") and args ~= "" then
-		if Config["UnwantedItemList"][args] then 
+		if Config["UnwantedItemList"][args] then
 			Config["UnwantedItemList"][args] = nil
-			print(args.." removed from the list.")
+			print(args .. " removed from the list.")
 		else
 			print("Item is not in the list.")
 		end
-	elseif (cmd == "trash") and args =="on" then
+	elseif (cmd == "keep") and args ~= "" then
+		if Config["WantedItemList"][args] then
+			print("Item is already in the list.")
+		else
+			local link = select(2, GetItemInfo(args))
+			if link then
+				Config["WantedItemList"][args] = link
+				print(args .. " added to the list.")
+			else
+				print("Invalid item")
+			end
+		end
+	elseif (cmd == "unkeep") and args ~= "" then
+		if Config["WantedItemList"][args] then
+			Config["WantedItemList"][args] = nil
+			print(args .. " removed from the list.")
+		else
+			print("Item is not in the list.")
+		end
+	elseif (cmd == "trash") and args == "on" then
 		Config["trash"] = true
 		print("Trashcan will now automatically delete trash items!")
 
-	elseif (cmd == "trash") and args =="off" then
+	elseif (cmd == "trash") and args == "off" then
 		Config["trash"] = false
 		print("Trashcan will no longer automatically delete trash items!")
 
 	elseif (cmd == "dump") then
+		print("\n--- UNWANTED ITEMS ---\n")
 		for i in pairs(Config["UnwantedItemList"]) do
 			print(i, Config["UnwantedItemList"][i])
 		end
+		print("\n--- WANTED ITEMS ---\n")
+		for i in pairs(Config["WantedItemList"]) do
+			print(i, Config["WantedItemList"][i])
+		end
 
-
-	elseif (cmd == "autoreport") and args =="on" then
+	elseif (cmd == "autoreport") and args == "on" then
 		Config["autoreport"] = true
 		print("Trashcan will report automatic deletion of items.")
-
-	elseif (cmd == "autoreport") and args =="off" then
+		
+	elseif (cmd == "autoreport") and args == "off" then
 		Config["autoreport"] = false
 		print("Trashcan will *NOT* report automatic deletion of items.")
-
 	end
-
-
-
 end
 
 function DestroyJunk()
-
-if (Config["status"] == false) then
---do nothing because the Trashcan was disabled
-
-else
---start searching bags for gray level item(s) to purge
-	local bag, slot, link, quality
-	for bag = 0,4 do
-		for slot = 1,GetContainerNumSlots(bag) do
-			link = GetContainerItemLink(bag, slot)
-			if (link) then
-				_, _, quality = GetItemInfo(link)
-				local itemID = GetItemInfoFromHyperlink(link)
-				if (quality == 0 and Config["trash"]) or Config["UnwantedItemList"][tostring(itemID)] then
-					if Config["autoreport"] then 
-						DEFAULT_CHAT_FRAME:AddMessage("Destroyed: "..link,1,0,0) 
+	if (Config["status"] == false) then
+		--do nothing because the Trashcan was disabled
+	else
+		--start searching bags for gray level item(s) to purge
+		local link
+		for bag = 0, 4 do
+			for slot = 1, GetContainerNumSlots(bag) do
+				link = GetContainerItemLink(bag, slot)
+				if shouldDelete(link) then
+					if Config["autoreport"] then
+						DEFAULT_CHAT_FRAME:AddMessage("Destroyed: " .. link, 1, 0, 0)
 					end
 					PickupContainerItem(bag, slot)
 					DeleteCursorItem()
@@ -270,6 +282,5 @@ else
 			end
 		end
 	end
-end
 	TrashcanMainFrame:Hide()
-end	
+end
