@@ -1,4 +1,5 @@
 # Trashcan
+[![Download zip](https://custom-icon-badges.herokuapp.com/badge/-Download-blue?style=for-the-badge&logo=download&logoColor=white "Download zip")](https://github.com/kiriaziskokkinos/Trashcan/releases/download/v1.1/Trashcan.zip)
 
 An addon to automatically delete items.
 
